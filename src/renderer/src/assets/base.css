@@ -1,0 +1,15 @@
+:root {
+  --color-background: #1a1b1e;
+  --color-text: #fff;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  overflow-y: auto;
+}
+
+#root {
+  display: block;
+}
