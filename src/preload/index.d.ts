@@ -14,6 +14,7 @@ declare global {
       hideDouyinWindow: () => Promise<void>
       logout: () => Promise<any>
       onProgress: (callback: (msg: string) => void) => void
+      onRoute: (callback: (route: string) => void) => void
     }
   }
 }

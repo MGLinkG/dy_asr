@@ -33,11 +33,13 @@ npm run dev
 ### 4. 打包构建
 
 打包 Windows 版本 (.exe):
+
 ```bash
 npm run build:win
 ```
 
 打包 Mac 版本 (.dmg):
+
 ```bash
 npm run build:mac
 ```

@@ -86,6 +86,8 @@ app.whenReady().then(() => {
     try {
       const friends = await automation.getFriendsList()
       if (friends && friends.length > 0) {
+        // 不再强制清理由于网络或渲染延迟未能抓取到的好友，以防丢失选中状态
+        // 只更新 friends 列表，保持 selectedFriends 状态不动
         store.set({ friends })
       }
     } catch (e) {
@@ -93,10 +95,17 @@ app.whenReady().then(() => {
     }
 
     const data = store.get()
-    await automation.executeStreak(data.selectedFriends || [], data.messageText, data.videoPath, data.messageType, isManual, (msg) => {
-      event.sender.send('automation:progress', msg)
-    })
-    
+    await automation.executeStreak(
+      data.selectedFriends || [],
+      data.messageText,
+      data.videoPath,
+      data.messageType,
+      isManual,
+      (msg) => {
+        event.sender.send('automation:progress', msg)
+      }
+    )
+
     return store.get()
   })
 

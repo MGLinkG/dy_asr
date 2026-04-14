@@ -8,12 +8,16 @@ export default function App() {
   const [status, setStatus] = useState('')
   const [route, setRoute] = useState<'dashboard' | 'schedule' | 'douyin'>('dashboard')
   const [localMessageText, setLocalMessageText] = useState('')
+  const [localScheduleEnabled, setLocalScheduleEnabled] = useState(false)
   const [scheduleHour, setScheduleHour] = useState(10)
   const [scheduleMinute, setScheduleMinute] = useState(0)
+  const [showSaveToast, setShowSaveToast] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
   const defaultMenu = [
     { id: 'dashboard', label: '好友列表管理' },
     { id: 'schedule', label: '定时任务' },
+    { id: 'message', label: '消息设置' },
     { id: 'douyin', label: '抖音页面' }
   ]
 
@@ -22,7 +26,8 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
-        if (parsed && parsed.length === 3) return parsed
+        // 兼容旧版本数据，如果发现长度不对，强制重置为最新默认菜单
+        if (parsed && parsed.length === defaultMenu.length) return parsed
       } catch (e) {}
     }
     return defaultMenu
@@ -34,7 +39,8 @@ export default function App() {
     window.api.getStore().then((data: any) => {
       setStore(data)
       setLocalMessageText(data?.messageText || '')
-      
+      setLocalScheduleEnabled(data?.isScheduleEnabled || false)
+
       if (data?.cronExpression) {
         const parts = data.cronExpression.split(' ')
         if (parts.length >= 2) {
@@ -42,7 +48,7 @@ export default function App() {
           setScheduleHour(parseInt(parts[1]) || 0)
         }
       }
-      
+
       // 启动时自动静默获取一次好友列表
       setTimeout(() => {
         handleGetFriends(true)
@@ -51,6 +57,12 @@ export default function App() {
     window.api.onProgress((msg: string) => {
       setStatus(msg)
     })
+
+    if (window.api.onRoute) {
+      window.api.onRoute((r: string) => {
+        setRoute(r as any)
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -83,6 +95,7 @@ export default function App() {
     try {
       const friends = await window.api.getFriends()
       if (friends && friends.length > 0) {
+        // 不再自动过滤和清除不在当前列表中的已选好友，除非用户主动退出账号
         const newStore = await window.api.setStore({ friends })
         setStore(newStore)
         setStatus(`好友列表同步成功，共 ${friends.length} 个好友`)
@@ -133,6 +146,26 @@ export default function App() {
     }
   }
 
+  const handleSaveMessage = () => {
+    updateConfig('messageText', localMessageText)
+
+    setShowSaveToast(true)
+    setTimeout(() => {
+      setShowSaveToast(false)
+    }, 2000)
+  }
+
+  const handleSaveSchedule = () => {
+    const newCron = `${scheduleMinute} ${scheduleHour} * * *`
+    updateConfig('cronExpression', newCron)
+    updateConfig('isScheduleEnabled', localScheduleEnabled)
+
+    setShowSaveToast(true)
+    setTimeout(() => {
+      setShowSaveToast(false)
+    }, 2000)
+  }
+
   const handleScheduleChange = (type: 'hour' | 'minute', value: number) => {
     let h = scheduleHour
     let m = scheduleMinute
@@ -141,9 +174,6 @@ export default function App() {
 
     setScheduleHour(h)
     setScheduleMinute(m)
-
-    const newCron = `${m} ${h} * * *`
-    updateConfig('cronExpression', newCron)
   }
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -154,9 +184,9 @@ export default function App() {
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault()
     if (!draggedItem || draggedItem === id) return
-    const draggedIndex = menuItems.findIndex(item => item.id === draggedItem)
-    const targetIndex = menuItems.findIndex(item => item.id === id)
-    
+    const draggedIndex = menuItems.findIndex((item) => item.id === draggedItem)
+    const targetIndex = menuItems.findIndex((item) => item.id === id)
+
     const newItems = [...menuItems]
     const [removed] = newItems.splice(draggedIndex, 1)
     newItems.splice(targetIndex, 0, removed)
@@ -171,6 +201,8 @@ export default function App() {
   const renderFriendCard = (friend: any, isSelected: boolean) => {
     const displayName = friend.name
     const displayDate = friend.date || ''
+    const streakNum = friend.streak || 0
+    const disappearing = friend.disappearing || ''
 
     return (
       <label
@@ -199,13 +231,33 @@ export default function App() {
               ?
             </div>
           )}
-          <span className="truncate font-medium text-gray-200" title={displayName}>{displayName}</span>
-        </div>
-        {displayDate && (
-          <span className="text-xs text-pink-400 bg-pink-400/10 px-2 py-1 rounded shrink-0">
-            {displayDate}
+          <span className="truncate font-medium text-gray-200" title={displayName}>
+            {displayName}
           </span>
-        )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {disappearing ? (
+            <span className="flex items-center gap-1 text-xs font-bold text-gray-300 bg-gray-600/60 px-2 py-1 rounded">
+              <svg className="w-3 h-3 fill-current text-gray-400" viewBox="0 0 24 24">
+                <path d="M12.63 2.53a.75.75 0 00-1.26 0C8.45 6.7 5.5 9.77 5.5 13.5a6.5 6.5 0 0013 0c0-3.73-2.95-6.8-5.87-10.97zm.37 5.97a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5z" />
+              </svg>
+              {disappearing}
+            </span>
+          ) : streakNum > 0 ? (
+            <span className="flex items-center gap-1 text-xs font-bold text-orange-500 bg-orange-500/10 px-2 py-1 rounded">
+              <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                <path d="M12.63 2.53a.75.75 0 00-1.26 0C8.45 6.7 5.5 9.77 5.5 13.5a6.5 6.5 0 0013 0c0-3.73-2.95-6.8-5.87-10.97zm.37 5.97a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5z" />
+              </svg>
+              {streakNum}
+            </span>
+          ) : null}
+          {displayDate && (
+            <span className="text-xs text-gray-400 bg-gray-700/50 px-2 py-1 rounded">
+              {displayDate}
+            </span>
+          )}
+        </div>
       </label>
     )
   }
@@ -219,8 +271,8 @@ export default function App() {
         style={{ width: SIDEBAR_WIDTH }}
       >
         <div className="text-xl font-bold text-pink-500 px-2 py-2">抖音续火花</div>
-        
-        {menuItems.map(item => (
+
+        {menuItems.map((item) => (
           <button
             key={item.id}
             draggable
@@ -228,11 +280,24 @@ export default function App() {
             onDragOver={(e) => handleDragOver(e, item.id)}
             onDragEnd={handleDragEnd}
             onClick={() => setRoute(item.id as any)}
-            className={`text-left px-3 py-2 rounded transition-colors ${
+            className={`flex items-center gap-2 text-left px-3 py-2 rounded transition-colors ${
               route === item.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/60'
-            } ${draggedItem === item.id ? 'opacity-50' : 'opacity-100'} cursor-move`}
+            } ${draggedItem === item.id ? 'opacity-50' : 'opacity-100'} cursor-pointer`}
           >
-            {item.label}
+            <svg
+              className="w-4 h-4 text-gray-500 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+            <span>{item.label}</span>
           </button>
         ))}
 
@@ -240,22 +305,51 @@ export default function App() {
           <div className="text-sm font-semibold text-gray-400 border-b border-gray-800 pb-1 mb-1">
             当前任务状态
           </div>
-          <div className={`text-sm ${status.includes('失败') ? 'text-red-400' : 'text-green-400'} min-h-[40px]`}>
+          <div
+            className={`text-sm ${status.includes('失败') ? 'text-red-400' : 'text-green-400'} min-h-[40px]`}
+          >
             {status || '暂无运行任务'}
           </div>
         </div>
 
         <div className="flex-1" />
-        <div className="text-xs text-gray-500 px-2 leading-5">
+        <div className="text-xs text-gray-500 px-2 leading-5 mb-2">
           进入“抖音页面”后如出现验证码，可直接在该页面手动完成。
         </div>
 
-        <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="mt-4 text-left px-3 py-2 rounded text-red-400 hover:bg-red-500/20 transition-colors"
-        >
-          退出当前用户
-        </button>
+        {isLoggingIn ? (
+          <div className="p-3 bg-pink-600/10 border border-pink-500/30 rounded flex flex-col gap-2 mt-2">
+            <span className="text-xs text-pink-400 text-center">请在右侧页面完成登录</span>
+            <button
+              onClick={() => {
+                setIsLoggingIn(false)
+                setRoute('dashboard')
+                handleGetFriends(false)
+              }}
+              className="w-full px-3 py-2 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition-colors"
+            >
+              我已完成登录
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 mt-2">
+            <button
+              onClick={() => {
+                setIsLoggingIn(true)
+                setRoute('douyin')
+              }}
+              className="w-full text-center px-3 py-2 rounded bg-gray-800/80 text-gray-300 hover:bg-gray-700 transition-colors text-sm"
+            >
+              登录账号 / 切换账号
+            </button>
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="w-full text-center px-3 py-2 rounded text-red-400 hover:bg-red-500/20 transition-colors text-sm"
+            >
+              退出当前用户
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto relative">
@@ -267,18 +361,48 @@ export default function App() {
 
         {route === 'schedule' && (
           <div className="flex flex-col gap-6">
-            <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow">
-              <h1 className="text-2xl font-bold text-pink-500">定时任务与消息设置</h1>
+            <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow shrink-0">
+              <h1 className="text-2xl font-bold text-pink-500">定时任务</h1>
+              <button
+                onClick={handleSaveSchedule}
+                className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md hover:shadow-lg font-medium"
+              >
+                保存设置
+              </button>
             </header>
             <div className="bg-gray-800 p-6 rounded-lg flex flex-col gap-6 max-w-2xl">
-              <div>
+              {/* Enable/Disable Toggle */}
+              <div className="flex items-center justify-between bg-gray-900/50 p-4 rounded-xl border border-gray-700">
+                <div>
+                  <div className="font-medium text-gray-200">启用自动续火花</div>
+                  <div className="text-sm text-gray-500 mt-1">
+                    开启后，将在设定的时间自动后台执行任务
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={localScheduleEnabled}
+                    onChange={(e) => setLocalScheduleEnabled(e.target.checked)}
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+                </label>
+              </div>
+
+              <div
+                className={`transition-opacity duration-300 ${!localScheduleEnabled ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
+              >
                 <label className="block text-sm font-medium text-gray-300 mb-3">每天执行时间</label>
                 <div className="flex flex-col gap-6 bg-gray-900/50 p-6 rounded-xl border border-gray-700 shadow-inner">
                   <div className="text-center">
                     <div className="text-5xl font-mono text-pink-500 font-bold tracking-wider drop-shadow-md">
-                      {String(scheduleHour).padStart(2, '0')}:{String(scheduleMinute).padStart(2, '0')}
+                      {String(scheduleHour).padStart(2, '0')}:
+                      {String(scheduleMinute).padStart(2, '0')}
                     </div>
-                    <div className="text-gray-400 mt-3 text-sm">将在每天的这个时间自动为您续火花</div>
+                    <div className="text-gray-400 mt-3 text-sm">
+                      将在每天的这个时间自动为您续火花
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-5 px-4 mt-2">
@@ -292,7 +416,9 @@ export default function App() {
                         onChange={(e) => handleScheduleChange('hour', parseInt(e.target.value))}
                         className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500 hover:accent-pink-400 transition-all"
                       />
-                      <span className="text-gray-300 w-8 font-mono text-sm">{String(scheduleHour).padStart(2, '0')}</span>
+                      <span className="text-gray-300 w-8 font-mono text-sm">
+                        {String(scheduleHour).padStart(2, '0')}
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -305,12 +431,30 @@ export default function App() {
                         onChange={(e) => handleScheduleChange('minute', parseInt(e.target.value))}
                         className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500 hover:accent-pink-400 transition-all"
                       />
-                      <span className="text-gray-300 w-8 font-mono text-sm">{String(scheduleMinute).padStart(2, '0')}</span>
+                      <span className="text-gray-300 w-8 font-mono text-sm">
+                        {String(scheduleMinute).padStart(2, '0')}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
 
+        {route === 'message' && (
+          <div className="flex flex-col gap-6">
+            <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow shrink-0">
+              <h1 className="text-2xl font-bold text-pink-500">消息设置</h1>
+              <button
+                onClick={handleSaveMessage}
+                className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md hover:shadow-lg font-medium"
+              >
+                保存设置
+              </button>
+            </header>
+
+            <div className="bg-gray-800 p-6 rounded-lg flex flex-col gap-6 max-w-2xl">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">消息类型</label>
                 <select
@@ -325,18 +469,21 @@ export default function App() {
 
               {store.messageType === 'text' ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">续火花文本内容</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    续火花文本内容
+                  </label>
                   <textarea
                     value={localMessageText}
                     onChange={(e) => setLocalMessageText(e.target.value)}
-                    onBlur={(e) => updateConfig('messageText', e.target.value)}
                     className="w-full bg-gray-700 p-3 rounded border border-gray-600 focus:border-pink-500 outline-none h-32 transition resize-none"
                     placeholder="请输入要发送的文本..."
                   />
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">续火花视频路径</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    续火花视频路径
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -384,13 +531,22 @@ export default function App() {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">好友列表</h2>
                 <span className="text-sm text-gray-400">
-                  已选 {store.selectedFriends?.length || 0} / {store.friends?.length || 0}
+                  已选 {store.selectedFriends?.length || 0}
                 </span>
               </div>
 
               {store.friends?.length === 0 ? (
-                <div className="flex-1 border border-gray-700 rounded bg-gray-900 flex items-center justify-center text-gray-500">
-                  暂无好友数据，请点击右上角“获取好友”
+                <div className="flex-1 border border-gray-700 rounded bg-gray-900 flex flex-col gap-4 items-center justify-center text-gray-500">
+                  <p>暂无好友数据，可能是未登录或列表为空</p>
+                  <button
+                    onClick={() => {
+                      setIsLoggingIn(true)
+                      setRoute('douyin')
+                    }}
+                    className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md text-sm font-medium"
+                  >
+                    前往登录抖音
+                  </button>
                 </div>
               ) : (
                 <div className="flex-1 flex gap-6 min-h-0">
@@ -398,13 +554,23 @@ export default function App() {
                   <div className="flex-1 flex flex-col border border-gray-700 rounded-lg bg-gray-900 overflow-hidden">
                     <div className="bg-gray-800/80 p-3 border-b border-gray-700 text-sm font-medium text-pink-500 flex justify-between items-center shrink-0">
                       <span>待执行任务好友</span>
-                      <span className="bg-pink-500/20 px-2 py-0.5 rounded text-xs">{store.friends?.filter((f: any) => store.selectedFriends?.includes(f.name)).length || 0}</span>
+                      <span className="bg-pink-500/20 px-2 py-0.5 rounded text-xs">
+                        {store.selectedFriends?.length || 0}
+                      </span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                      {store.friends?.filter((f: any) => store.selectedFriends?.includes(f.name)).length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-gray-600 text-sm">暂未选择好友</div>
+                      {store.selectedFriends?.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-gray-600 text-sm">
+                          暂未选择好友
+                        </div>
                       ) : (
-                        store.friends?.filter((f: any) => store.selectedFriends?.includes(f.name)).map((friend: any) => renderFriendCard(friend, true))
+                        store.selectedFriends?.map((friendName: string) => {
+                          const friend = store.friends?.find((f: any) => f.name === friendName) || {
+                            name: friendName,
+                            date: '未在列表中显示'
+                          }
+                          return renderFriendCard(friend, true)
+                        })
                       )}
                     </div>
                   </div>
@@ -413,13 +579,21 @@ export default function App() {
                   <div className="flex-1 flex flex-col border border-gray-700 rounded-lg bg-gray-900 overflow-hidden">
                     <div className="bg-gray-800/80 p-3 border-b border-gray-700 text-sm font-medium text-gray-400 flex justify-between items-center shrink-0">
                       <span>未选择好友</span>
-                      <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">{store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name)).length || 0}</span>
+                      <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">
+                        {store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name))
+                          .length || 0}
+                      </span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                      {store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name)).length === 0 ? (
-                        <div className="h-full flex items-center justify-center text-gray-600 text-sm">全部已选</div>
+                      {store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name))
+                        .length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-gray-600 text-sm">
+                          全部已选
+                        </div>
                       ) : (
-                        store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name)).map((friend: any) => renderFriendCard(friend, false))
+                        store.friends
+                          ?.filter((f: any) => !store.selectedFriends?.includes(f.name))
+                          .map((friend: any) => renderFriendCard(friend, false))
                       )}
                     </div>
                   </div>
@@ -429,6 +603,16 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Save Success Toast */}
+      {showSaveToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-green-500/90 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 z-50 animate-[fade-in-down_0.3s_ease-out]">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="font-medium">设置保存成功</span>
+        </div>
+      )}
 
       {/* Logout Confirm Modal */}
       {showLogoutConfirm && (

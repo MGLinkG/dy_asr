@@ -3,9 +3,17 @@ import path from 'path'
 import { app } from 'electron'
 
 export interface StoreData {
-  friends: Array<{ name: string; id: string; avatar: string }>
+  friends: Array<{
+    name: string
+    id: string
+    avatar: string
+    date?: string
+    streak?: number
+    disappearing?: string
+  }>
   selectedFriends: string[]
   cronExpression: string
+  isScheduleEnabled: boolean
   messageType: 'text' | 'video'
   messageText: string
   videoPath: string
@@ -15,6 +23,7 @@ const DEFAULT_DATA: StoreData = {
   friends: [],
   selectedFriends: [],
   cronExpression: '0 10 * * *', // default 10:00 AM every day
+  isScheduleEnabled: false,
   messageType: 'text',
   messageText: '火花续上~',
   videoPath: ''
@@ -51,6 +60,15 @@ export class AppStore {
       fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2))
     } catch (e) {
       console.error('Failed to save config', e)
+    }
+  }
+
+  public clear() {
+    this.data = { ...DEFAULT_DATA }
+    try {
+      fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2))
+    } catch (e) {
+      console.error('Failed to clear config', e)
     }
   }
 }

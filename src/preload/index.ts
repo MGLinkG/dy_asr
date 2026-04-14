@@ -13,7 +13,12 @@ const api = {
   hideDouyinWindow: () => ipcRenderer.invoke('automation:hideWindow'),
   logout: () => ipcRenderer.invoke('automation:logout'),
   onProgress: (callback: (msg: string) => void) => {
+    ipcRenderer.removeAllListeners('automation:progress')
     ipcRenderer.on('automation:progress', (_event, msg) => callback(msg))
+  },
+  onRoute: (callback: (route: string) => void) => {
+    ipcRenderer.removeAllListeners('automation:route')
+    ipcRenderer.on('automation:route', (_event, route) => callback(route))
   }
 }
 
