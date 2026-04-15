@@ -4,7 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Custom APIs for renderer
 const api = {
   getStore: () => ipcRenderer.invoke('store:get'),
-  setStore: (data: any) => ipcRenderer.invoke('store:set', data),
+  setStore: (data: unknown) => ipcRenderer.invoke('store:set', data),
   login: () => ipcRenderer.invoke('automation:login'),
   getFriends: () => ipcRenderer.invoke('automation:getFriends'),
   executeStreak: (isManual: boolean = false) => ipcRenderer.invoke('automation:execute', isManual),

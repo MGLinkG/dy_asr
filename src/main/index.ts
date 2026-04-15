@@ -21,7 +21,9 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      nodeIntegration: false,
+      contextIsolation: true
     }
   })
 
@@ -90,7 +92,7 @@ app.whenReady().then(() => {
         // 只更新 friends 列表，保持 selectedFriends 状态不动
         store.set({ friends })
       }
-    } catch (e) {
+    } catch {
       event.sender.send('automation:progress', '同步最新好友列表失败，继续执行...')
     }
 

@@ -1,15 +1,22 @@
 import { chromium, Browser, Page } from 'playwright-core'
 import { BrowserWindow, WebContentsView } from 'electron'
 
+type FriendItem = {
+  name: string
+  id: string
+  avatar: string
+  date?: string
+  streak?: number
+  disappearing?: string
+}
+
 export class DouyinAutomation {
   public botView: WebContentsView | null = null
   public mainWindow: BrowserWindow | null = null
   private mode: 'hidden' | 'page' = 'hidden'
   private sidebarWidth = 260
 
-  constructor() {}
-
-  public initView(mainWindow: BrowserWindow) {
+  public initView(mainWindow: BrowserWindow): void {
     if (this.botView) return
     this.mainWindow = mainWindow
 
@@ -24,22 +31,22 @@ export class DouyinAutomation {
     // Remove bot fingerprint
     const ua = this.botView.webContents
       .getUserAgent()
-      .replace(/Electron\/[\d\.]+ /, '')
-      .replace(/douyin-auto-streak\/[\d\.]+ /, '')
+      .replace(/Electron\/[\d.]+ /, '')
+      .replace(/douyin-auto-streak\/[\d.]+ /, '')
     this.botView.webContents.setUserAgent(ua)
 
     // Load Douyin
     this.botView.webContents.loadURL('https://www.douyin.com/chat')
   }
 
-  public setSidebarWidth(width: number) {
+  public setSidebarWidth(width: number): void {
     if (Number.isFinite(width) && width > 0) {
       this.sidebarWidth = Math.floor(width)
     }
     this.updateBounds()
   }
 
-  public showPage() {
+  public showPage(): void {
     // Show the page view
     this.mode = 'page'
     if (!this.mainWindow || !this.botView) return
@@ -49,7 +56,7 @@ export class DouyinAutomation {
     this.updateBounds()
   }
 
-  public hide() {
+  public hide(): void {
     this.mode = 'hidden'
     if (!this.mainWindow || !this.botView) return
     if (this.mainWindow.contentView.children.includes(this.botView)) {
@@ -57,7 +64,7 @@ export class DouyinAutomation {
     }
   }
 
-  public updateBounds() {
+  public updateBounds(): void {
     if (!this.mainWindow || !this.botView) return
     if (this.mode === 'hidden') return
     const bounds = this.mainWindow.getBounds()
@@ -95,16 +102,11 @@ export class DouyinAutomation {
     }
   }
 
-  public async getFriendsList(): Promise<
-    Array<{
-      name: string
-      id: string
-      avatar: string
-      date?: string
-      streak?: number
-      disappearing?: string
-    }>
-  > {
+  public async loginAndSaveState(): Promise<void> {
+    this.showPage()
+  }
+
+  public async getFriendsList(): Promise<FriendItem[]> {
     if (!this.botView) throw new Error('Bot view not initialized')
 
     // 【核心修复】由于获取列表需要模拟滚动触发前端的懒加载机制（IntersectionObserver），
@@ -123,23 +125,23 @@ export class DouyinAutomation {
         await page.waitForSelector('[class*="conversationConversationItemwrapper"]', {
           timeout: 15000
         })
-      } catch (e) {
+      } catch {
         console.log('警告：等待好友列表加载超时，请检查网络。')
       }
       await page.waitForTimeout(2000)
 
-      const friendsMap = new Map<string, any>()
+      const friendsMap = new Map<string, FriendItem>()
       let previousCount = 0
       let noNewItemsCount = 0
 
       // 必须通过真实 DOM 的 scrollTop 步进滚动，否则无法触发懒加载
       for (let i = 0; i < 50; i++) {
-        const currentBatch = await page.evaluate(() => {
-          const result: any[] = []
+        const currentBatch = await page.evaluate((): FriendItem[] => {
+          const result: FriendItem[] = []
           const elements = document.querySelectorAll(
             '[class*="conversationConversationItemwrapper"]'
           )
-          elements.forEach((item) => {
+          elements.forEach((item): void => {
             const nameEl =
               item.querySelector('[class*="conversationConversationItemtitleWrapper"]') ||
               item.querySelector('[class*="conversationConversationItemtitle"]')
@@ -229,7 +231,7 @@ export class DouyinAutomation {
       }
 
       // 滚动回顶部
-      await page.evaluate(() => {
+      await page.evaluate((): void => {
         const firstItem = document.querySelector('[class*="conversationConversationItemwrapper"]')
         if (firstItem) {
           let el = firstItem.parentElement
@@ -283,7 +285,7 @@ export class DouyinAutomation {
       this.showPage()
     }
 
-    const log = (msg: string) => {
+    const log = (msg: string): void => {
       console.log(msg)
       if (onProgress) onProgress(msg)
     }
@@ -298,7 +300,7 @@ export class DouyinAutomation {
         await page.waitForSelector('[class*="conversationConversationItemwrapper"]', {
           timeout: 15000
         })
-      } catch (e) {
+      } catch {
         log('警告：等待好友列表加载超时，请检查网络。')
       }
       await page.waitForTimeout(2000)
@@ -308,7 +310,7 @@ export class DouyinAutomation {
         log(`准备向好友 [${targetFriendName}] 发送消息...`)
 
         // 每次寻找新好友前，先将列表滚动回顶部，防止因为上一个好友在底部导致找不到上面的好友
-        await page.evaluate(() => {
+        await page.evaluate((): void => {
           const firstItem = document.querySelector('[class*="conversationConversationItemwrapper"]')
           if (firstItem) {
             let el = firstItem.parentElement
@@ -333,7 +335,7 @@ export class DouyinAutomation {
         let foundFriend = false
 
         // 辅助函数：由于抖音对过长的群聊名字会加上省略号，这里做一个容错的包含匹配
-        const isNameMatch = (n1: string, n2: string) => {
+        const isNameMatch = (n1: string, n2: string): boolean => {
           const s1 = n1
             .replace(/\u00A0/g, ' ')
             .replace(/\s+/g, ' ')
@@ -364,7 +366,7 @@ export class DouyinAutomation {
               await page.waitForTimeout(300)
               try {
                 await el.click({ timeout: 1500 })
-              } catch (e) {
+              } catch {
                 await el.click({ force: true })
               }
               foundFriend = true
@@ -377,7 +379,7 @@ export class DouyinAutomation {
           log(`尝试向下滚动查找好友: ${targetFriendName}...`)
           // 纯 JS 步进滚动，比鼠标滚轮更稳定，且能触发懒加载
           for (let i = 0; i < 30; i++) {
-            await page.evaluate(() => {
+            await page.evaluate((): void => {
               const firstItem = document.querySelector(
                 '[class*="conversationConversationItemwrapper"]'
               )
@@ -410,7 +412,7 @@ export class DouyinAutomation {
                   await page.waitForTimeout(300)
                   try {
                     await el.click({ timeout: 1500 })
-                  } catch (e) {
+                  } catch {
                     await el.click({ force: true })
                   }
                   foundFriend = true
@@ -434,7 +436,7 @@ export class DouyinAutomation {
             '.public-DraftEditor-content, [contenteditable="true"], [data-e2e="chat-text-input"], [data-e2e="msg-input"], textarea[placeholder*="发送消息"]',
             { timeout: 10000 }
           )
-        } catch (e) {
+        } catch {
           log(`警告：等待输入框超时，页面可能未响应。`)
         }
         await page.waitForTimeout(1000)
@@ -444,7 +446,7 @@ export class DouyinAutomation {
         try {
           // 等待顶部的名字更新为目标好友的名字，超时时间 5 秒
           await page.waitForFunction(
-            (expectedName) => {
+            (expectedName): boolean => {
               const el = document.querySelector('[class*="RightPanelHeadertitle"]')
               if (!el) return false
               const text = (el as HTMLElement).innerText.trim()
@@ -473,7 +475,7 @@ export class DouyinAutomation {
             { timeout: 5000 }
           )
           isSafeToSend = true
-        } catch (e) {
+        } catch {
           const headerLocator = page.locator('[class*="RightPanelHeadertitle"]').first()
           if ((await headerLocator.count()) > 0) {
             const currentTitle = await headerLocator.innerText()
@@ -548,9 +550,10 @@ export class DouyinAutomation {
                 '.send-button, [aria-label*="发送"], [class*="send-btn"], [data-e2e="chat-send-btn"]'
               )
               if ((await sendBtn.count()) > 0) {
-                try {
-                  await sendBtn.first().click({ force: true, timeout: 1000 })
-                } catch (e) {}
+                await sendBtn
+                  .first()
+                  .click({ force: true, timeout: 1000 })
+                  .catch(() => {})
               }
 
               // 发送后检查是否有验证码
@@ -563,9 +566,10 @@ export class DouyinAutomation {
                 await editor.press('Enter', { delay: 100 })
                 await page.waitForTimeout(500)
                 if ((await sendBtn.count()) > 0) {
-                  try {
-                    await sendBtn.first().click({ force: true, timeout: 1000 })
-                  } catch (e) {}
+                  await sendBtn
+                    .first()
+                    .click({ force: true, timeout: 1000 })
+                    .catch(() => {})
                 }
               }
 
@@ -593,9 +597,10 @@ export class DouyinAutomation {
               '.send-button, [aria-label*="发送"], [class*="send-btn"], [data-e2e="chat-send-btn"]'
             )
             if ((await sendBtn.count()) > 0) {
-              try {
-                await sendBtn.first().click({ force: true, timeout: 1000 })
-              } catch (e) {}
+              await sendBtn
+                .first()
+                .click({ force: true, timeout: 1000 })
+                .catch(() => {})
             }
 
             const captcha = page.locator('#captcha_container')

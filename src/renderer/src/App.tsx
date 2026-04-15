@@ -2,11 +2,32 @@ import { useEffect, useState } from 'react'
 
 const SIDEBAR_WIDTH = 260
 
+type Route = 'dashboard' | 'schedule' | 'message' | 'douyin'
+
+const isRoute = (v: unknown): v is Route =>
+  v === 'dashboard' || v === 'schedule' || v === 'message' || v === 'douyin'
+
+const isMenuItem = (v: unknown): v is { id: Route; label: string } => {
+  if (!v || typeof v !== 'object') return false
+  const item = v as Record<string, unknown>
+  return isRoute(item.id) && typeof item.label === 'string'
+}
+
+const DEFAULT_STORE: StoreData = {
+  friends: [],
+  selectedFriends: [],
+  cronExpression: '0 10 * * *',
+  isScheduleEnabled: false,
+  messageType: 'text',
+  messageText: '火花续上~',
+  videoPath: ''
+}
+
 export default function App() {
-  const [store, setStore] = useState<any>(null)
+  const [store, setStore] = useState<StoreData>(DEFAULT_STORE)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
-  const [route, setRoute] = useState<'dashboard' | 'schedule' | 'douyin'>('dashboard')
+  const [route, setRoute] = useState<Route>('dashboard')
   const [localMessageText, setLocalMessageText] = useState('')
   const [localScheduleEnabled, setLocalScheduleEnabled] = useState(false)
   const [scheduleHour, setScheduleHour] = useState(10)
@@ -14,34 +35,64 @@ export default function App() {
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const defaultMenu = [
+  const defaultMenu: Array<{ id: Route; label: string }> = [
     { id: 'dashboard', label: '好友列表管理' },
     { id: 'schedule', label: '定时任务' },
     { id: 'message', label: '消息设置' },
     { id: 'douyin', label: '抖音页面' }
   ]
 
-  const [menuItems, setMenuItems] = useState(() => {
+  const [menuItems, setMenuItems] = useState<Array<{ id: Route; label: string }>>(() => {
     const saved = localStorage.getItem('menuOrder')
     if (saved) {
       try {
-        const parsed = JSON.parse(saved)
-        // 兼容旧版本数据，如果发现长度不对，强制重置为最新默认菜单
-        if (parsed && parsed.length === defaultMenu.length) return parsed
-      } catch (e) {}
+        const parsed: unknown = JSON.parse(saved)
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === defaultMenu.length &&
+          parsed.every(isMenuItem)
+        ) {
+          return parsed
+        }
+      } catch {
+        localStorage.removeItem('menuOrder')
+      }
     }
     return defaultMenu
   })
 
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
 
-  useEffect(() => {
-    window.api.getStore().then((data: any) => {
-      setStore(data)
-      setLocalMessageText(data?.messageText || '')
-      setLocalScheduleEnabled(data?.isScheduleEnabled || false)
+  async function handleGetFriends(silent = false): Promise<void> {
+    if (!silent) setLoading(true)
+    setStatus('正在同步好友列表...')
+    try {
+      const friends = await window.api.getFriends()
+      if (friends && friends.length > 0) {
+        // 不再自动过滤和清除不在当前列表中的已选好友，除非用户主动退出账号
+        const newStore = await window.api.setStore({ friends })
+        setStore(newStore)
+        setStatus(`好友列表同步成功，共 ${friends.length} 个好友`)
+      } else if (!silent) {
+        setStatus('未获取到好友数据，请检查是否已登录')
+      } else {
+        setStatus('暂无运行任务')
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      if (!silent) setStatus('获取失败: ' + message)
+      else setStatus('暂无运行任务')
+    }
+    if (!silent) setLoading(false)
+  }
 
-      if (data?.cronExpression) {
+  useEffect(() => {
+    window.api.getStore().then((data) => {
+      setStore(data)
+      setLocalMessageText(data.messageText || '')
+      setLocalScheduleEnabled(data.isScheduleEnabled || false)
+
+      if (data.cronExpression) {
         const parts = data.cronExpression.split(' ')
         if (parts.length >= 2) {
           setScheduleMinute(parseInt(parts[0]) || 0)
@@ -60,7 +111,7 @@ export default function App() {
 
     if (window.api.onRoute) {
       window.api.onRoute((r: string) => {
-        setRoute(r as any)
+        if (isRoute(r)) setRoute(r)
       })
     }
   }, [])
@@ -82,33 +133,12 @@ export default function App() {
       const newStore = await window.api.logout()
       setStore(newStore)
       setStatus('已成功退出当前账号，本地数据已清除。')
-    } catch (e: any) {
-      setStatus('退出失败: ' + e.message)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setStatus('退出失败: ' + message)
     }
     setLoading(false)
     setShowLogoutConfirm(false)
-  }
-
-  const handleGetFriends = async (silent = false) => {
-    if (!silent) setLoading(true)
-    setStatus('正在同步好友列表...')
-    try {
-      const friends = await window.api.getFriends()
-      if (friends && friends.length > 0) {
-        // 不再自动过滤和清除不在当前列表中的已选好友，除非用户主动退出账号
-        const newStore = await window.api.setStore({ friends })
-        setStore(newStore)
-        setStatus(`好友列表同步成功，共 ${friends.length} 个好友`)
-      } else if (!silent) {
-        setStatus('未获取到好友数据，请检查是否已登录')
-      } else {
-        setStatus('暂无运行任务')
-      }
-    } catch (e: any) {
-      if (!silent) setStatus('获取失败: ' + e.message)
-      else setStatus('暂无运行任务')
-    }
-    if (!silent) setLoading(false)
   }
 
   const handleExecute = async () => {
@@ -119,8 +149,9 @@ export default function App() {
       const newStore = await window.api.executeStreak(true) // true 表示手动执行
       if (newStore) setStore(newStore)
       setStatus('执行完成！')
-    } catch (e: any) {
-      setStatus('执行失败: ' + e.message)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setStatus('执行失败: ' + message)
     }
     setLoading(false)
   }
@@ -134,7 +165,7 @@ export default function App() {
     setStore(newStore)
   }
 
-  const updateConfig = async (key: string, value: any) => {
+  const updateConfig = async (key: string, value: unknown) => {
     const newStore = await window.api.setStore({ [key]: value })
     setStore(newStore)
   }
@@ -198,7 +229,7 @@ export default function App() {
     localStorage.setItem('menuOrder', JSON.stringify(menuItems))
   }
 
-  const renderFriendCard = (friend: any, isSelected: boolean) => {
+  const renderFriendCard = (friend: FriendItem, isSelected: boolean) => {
     const displayName = friend.name
     const displayDate = friend.date || ''
     const streakNum = friend.streak || 0
@@ -262,8 +293,6 @@ export default function App() {
     )
   }
 
-  if (!store) return <div className="p-8 text-white">Loading...</div>
-
   return (
     <div className="h-screen w-full bg-gray-900 text-white flex overflow-hidden">
       <aside
@@ -279,7 +308,7 @@ export default function App() {
             onDragStart={(e) => handleDragStart(e, item.id)}
             onDragOver={(e) => handleDragOver(e, item.id)}
             onDragEnd={handleDragEnd}
-            onClick={() => setRoute(item.id as any)}
+            onClick={() => setRoute(item.id)}
             className={`flex items-center gap-2 text-left px-3 py-2 rounded transition-colors ${
               route === item.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/60'
             } ${draggedItem === item.id ? 'opacity-50' : 'opacity-100'} cursor-pointer`}
@@ -511,7 +540,9 @@ export default function App() {
               <h1 className="text-2xl font-bold text-pink-500">好友管理与执行</h1>
               <div className="flex gap-4">
                 <button
-                  onClick={handleGetFriends}
+                  onClick={() => {
+                    void handleGetFriends(false)
+                  }}
                   disabled={loading}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition disabled:opacity-50"
                 >
@@ -565,8 +596,10 @@ export default function App() {
                         </div>
                       ) : (
                         store.selectedFriends?.map((friendName: string) => {
-                          const friend = store.friends?.find((f: any) => f.name === friendName) || {
+                          const friend = store.friends.find((f) => f.name === friendName) || {
                             name: friendName,
+                            id: friendName,
+                            avatar: '',
                             date: '未在列表中显示'
                           }
                           return renderFriendCard(friend, true)
@@ -580,20 +613,22 @@ export default function App() {
                     <div className="bg-gray-800/80 p-3 border-b border-gray-700 text-sm font-medium text-gray-400 flex justify-between items-center shrink-0">
                       <span>未选择好友</span>
                       <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">
-                        {store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name))
-                          .length || 0}
+                        {
+                          store.friends.filter((f) => !store.selectedFriends.includes(f.name))
+                            .length
+                        }
                       </span>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                      {store.friends?.filter((f: any) => !store.selectedFriends?.includes(f.name))
+                      {store.friends.filter((f) => !store.selectedFriends.includes(f.name))
                         .length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-600 text-sm">
                           全部已选
                         </div>
                       ) : (
                         store.friends
-                          ?.filter((f: any) => !store.selectedFriends?.includes(f.name))
-                          .map((friend: any) => renderFriendCard(friend, false))
+                          .filter((f) => !store.selectedFriends.includes(f.name))
+                          .map((friend) => renderFriendCard(friend, false))
                       )}
                     </div>
                   </div>

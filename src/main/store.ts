@@ -54,7 +54,7 @@ export class AppStore {
     return this.data
   }
 
-  public set(data: Partial<StoreData>) {
+  public set(data: Partial<StoreData>): void {
     this.data = { ...this.data, ...data }
     try {
       fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2))
@@ -63,7 +63,7 @@ export class AppStore {
     }
   }
 
-  public clear() {
+  public clear(): void {
     this.data = { ...DEFAULT_DATA }
     try {
       fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2))

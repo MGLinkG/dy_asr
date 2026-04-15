@@ -24,6 +24,8 @@ export default defineConfig(
       'react-refresh': eslintPluginReactRefresh
     },
     rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules
     }

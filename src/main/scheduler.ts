@@ -4,11 +4,11 @@ import { DouyinAutomation } from './automation'
 
 let currentJob: schedule.Job | null = null
 
-export function initScheduler(automation: DouyinAutomation) {
+export function initScheduler(automation: DouyinAutomation): void {
   reschedule(automation)
 }
 
-export function reschedule(automation: DouyinAutomation) {
+export function reschedule(automation: DouyinAutomation): void {
   if (currentJob) {
     currentJob.cancel()
     currentJob = null
@@ -21,7 +21,7 @@ export function reschedule(automation: DouyinAutomation) {
     return
   }
 
-  currentJob = schedule.scheduleJob(cronExpression, async () => {
+  currentJob = schedule.scheduleJob(cronExpression, async (): Promise<void> => {
     console.log('Scheduled job triggered at', new Date())
 
     // 定时任务执行时，通知渲染进程切换到“抖音页面”显示执行进度
@@ -69,7 +69,7 @@ export function reschedule(automation: DouyinAutomation) {
         videoPath,
         messageType,
         true,
-        (msg) => {
+        (msg): void => {
           if (automation.mainWindow) {
             automation.mainWindow.webContents.send('automation:progress', msg)
           }
