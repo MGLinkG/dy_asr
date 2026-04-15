@@ -66,4 +66,4 @@ npm run build:mac
 
 ## License
 
-MIT License. See [LICENSE](file:///Users/mg/Downloads/dy-asr/LICENSE).
+MIT License. See [LICENSE](LICENSE).
