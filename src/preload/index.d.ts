@@ -26,13 +26,15 @@ declare global {
       getStore: () => Promise<StoreData>
       setStore: (data: Partial<StoreData>) => Promise<StoreData>
       login: () => Promise<void>
-      getFriends: () => Promise<FriendItem[]>
+      getFriends: () => Promise<Array<any>>
+      checkLogin: () => Promise<boolean>
       executeStreak: (isManual?: boolean) => Promise<StoreData>
       openFile: () => Promise<string | null>
       showDouyinWindow: () => Promise<void>
       hideDouyinWindow: () => Promise<void>
       logout: () => Promise<StoreData>
       onProgress: (callback: (msg: string) => void) => void
+      stopAutomation: () => void
       onRoute: (callback: (route: string) => void) => void
     }
   }

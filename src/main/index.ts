@@ -8,6 +8,8 @@ import { initScheduler, reschedule } from './scheduler'
 
 // 开启远程调试端口，允许 Playwright 连接到 Electron 的内置浏览器
 app.commandLine.appendSwitch('remote-debugging-port', '8315')
+// 隐藏 webdriver 标识，防止网页检测到自动化测试环境而无限加载/拒绝服务
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
 const automation = new DouyinAutomation()
 
@@ -83,6 +85,10 @@ app.whenReady().then(() => {
     return friends
   })
 
+  ipcMain.handle('automation:checkLogin', async () => {
+    return await automation.checkIsLoggedIn()
+  })
+
   ipcMain.handle('automation:execute', async (event, isManual: boolean) => {
     event.sender.send('automation:progress', '正在同步最新好友列表...')
     try {
@@ -109,6 +115,10 @@ app.whenReady().then(() => {
     )
 
     return store.get()
+  })
+
+  ipcMain.handle('automation:stop', () => {
+    automation.stop()
   })
 
   ipcMain.handle('dialog:openFile', async () => {

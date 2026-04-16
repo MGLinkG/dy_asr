@@ -100,9 +100,22 @@ export default function App() {
         }
       }
 
-      // 启动时自动静默获取一次好友列表
-      setTimeout(() => {
-        handleGetFriends(true)
+      // 启动时判断是否已登录，已登录才自动获取好友列表
+      setTimeout(async () => {
+        try {
+          const loggedIn = await window.api.checkLogin()
+          if (loggedIn) {
+            handleGetFriends(true)
+          } else {
+            setStatus('未登录状态，跳过自动同步。请前往“抖音页面”登录。')
+            // 如果未登录且好友列表为空，直接显示登录提示
+            if (!data.friends || data.friends.length === 0) {
+              setIsLoggingIn(true)
+            }
+          }
+        } catch (e) {
+          console.error('Check login failed:', e)
+        }
       }, 1000)
     })
     window.api.onProgress((msg: string) => {
@@ -350,14 +363,29 @@ export default function App() {
           <div className="p-3 bg-pink-600/10 border border-pink-500/30 rounded flex flex-col gap-2 mt-2">
             <span className="text-xs text-pink-400 text-center">请在右侧页面完成登录</span>
             <button
-              onClick={() => {
-                setIsLoggingIn(false)
-                setRoute('dashboard')
-                handleGetFriends(false)
+              onClick={async () => {
+                // 在用户点击完成登录时，再检测一次是否真的登上了
+                const loggedIn = await window.api.checkLogin()
+                if (loggedIn) {
+                  setIsLoggingIn(false)
+                  setRoute('dashboard')
+                  handleGetFriends(false)
+                } else {
+                  setStatus('尚未检测到登录状态，请确保已扫码成功。')
+                }
               }}
               className="w-full px-3 py-2 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition-colors"
             >
               我已完成登录
+            </button>
+            <button
+              onClick={() => {
+                setIsLoggingIn(false)
+                setRoute('dashboard')
+              }}
+              className="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded transition-colors mt-1"
+            >
+              暂不登录，返回
             </button>
           </div>
         ) : (
@@ -366,6 +394,7 @@ export default function App() {
               onClick={() => {
                 setIsLoggingIn(true)
                 setRoute('douyin')
+                window.api.login()
               }}
               className="w-full text-center px-3 py-2 rounded bg-gray-800/80 text-gray-300 hover:bg-gray-700 transition-colors text-sm"
             >
@@ -548,13 +577,25 @@ export default function App() {
                 >
                   获取好友
                 </button>
-                <button
-                  onClick={handleExecute}
-                  disabled={loading || store.selectedFriends.length === 0}
-                  className="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded transition disabled:opacity-50"
-                >
-                  手动执行
-                </button>
+                {loading ? (
+                  <button
+                    onClick={() => {
+                      window.api.stopAutomation()
+                      setStatus('【停止中】正在等待当前步骤中止...')
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition shadow-[0_0_10px_rgba(220,38,38,0.5)] animate-pulse"
+                  >
+                    强制停止
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleExecute}
+                    disabled={store.selectedFriends.length === 0}
+                    className="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded transition disabled:opacity-50"
+                  >
+                    手动执行
+                  </button>
+                )}
               </div>
             </header>
 
@@ -573,6 +614,7 @@ export default function App() {
                     onClick={() => {
                       setIsLoggingIn(true)
                       setRoute('douyin')
+                      window.api.login()
                     }}
                     className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md text-sm font-medium"
                   >

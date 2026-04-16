@@ -15,6 +15,7 @@ export class DouyinAutomation {
   public mainWindow: BrowserWindow | null = null
   private mode: 'hidden' | 'page' = 'hidden'
   private sidebarWidth = 260
+  private isAborted = false
 
   public initView(mainWindow: BrowserWindow): void {
     if (this.botView) return
@@ -28,15 +29,37 @@ export class DouyinAutomation {
       }
     })
 
-    // Remove bot fingerprint
-    const ua = this.botView.webContents
-      .getUserAgent()
-      .replace(/Electron\/[\d.]+ /, '')
-      .replace(/douyin-auto-streak\/[\d.]+ /, '')
+    // 伪装成标准的 Chrome 浏览器，防止被抖音的反爬虫机制拦截导致无限加载
+    const ua =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     this.botView.webContents.setUserAgent(ua)
 
-    // Load Douyin
-    this.botView.webContents.loadURL('https://www.douyin.com/chat')
+    // 隐藏 WebDriver 属性，防止被抖音安全策略识别为自动化脚本而一直卡在加载页面
+    this.botView.webContents.executeJavaScript(`
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined
+      });
+    `)
+
+    // 允许抖音页面内的第三方登录弹窗正常弹出（否则默认会被 Electron 拦截导致无响应）
+    this.botView.webContents.setWindowOpenHandler(() => {
+      // 也可以选择在内部弹出一个临时小窗口：
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 800,
+          height: 600,
+          autoHideMenuBar: true,
+          webPreferences: {
+            partition: 'persist:douyin'
+          }
+        }
+      }
+    })
+
+    // 抖音新版网页策略：如果在未登录状态下直接访问 /chat，会卡死在骨架屏且不会弹出登录框。
+    // 因此默认初始页面必须加载首页（www.douyin.com），首页会自动弹出登录框
+    this.botView.webContents.loadURL('https://www.douyin.com/')
   }
 
   public setSidebarWidth(width: number): void {
@@ -67,7 +90,8 @@ export class DouyinAutomation {
   public updateBounds(): void {
     if (!this.mainWindow || !this.botView) return
     if (this.mode === 'hidden') return
-    const bounds = this.mainWindow.getBounds()
+    // 使用 getContentBounds 获取实际内容区域，避免包含标题栏导致页面错位
+    const bounds = this.mainWindow.getContentBounds()
     const x = Math.min(this.sidebarWidth, bounds.width)
     const width = Math.max(bounds.width - x, 0)
     this.botView.setBounds({ x, y: 0, width, height: bounds.height })
@@ -82,7 +106,7 @@ export class DouyinAutomation {
       if (page) return { browser, page }
     }
 
-    this.botView?.webContents.loadURL('https://www.douyin.com/chat')
+    this.botView?.webContents.loadURL('https://www.douyin.com/')
     await new Promise((r) => setTimeout(r, 5000))
     const contexts2 = browser.contexts()
     for (const ctx of contexts2) {
@@ -97,17 +121,44 @@ export class DouyinAutomation {
     if (this.botView) {
       // 清除持久化分区里的所有数据（Cookies, LocalStorage 等）
       await this.botView.webContents.session.clearStorageData()
-      // 重新加载登录页面
-      this.botView.webContents.loadURL('https://www.douyin.com/chat')
+      // 重新加载首页触发重新登录
+      this.botView.webContents.loadURL('https://www.douyin.com/')
     }
+  }
+
+  public stop(): void {
+    this.isAborted = true
   }
 
   public async loginAndSaveState(): Promise<void> {
     this.showPage()
+    // 强制跳转到首页，触发未登录时的扫码登录框
+    if (this.botView) {
+      // 通过设置 referer 等方式进一步防止反爬
+      this.botView.webContents.loadURL('https://www.douyin.com/', {
+        userAgent:
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      })
+    }
+  }
+
+  public async checkIsLoggedIn(): Promise<boolean> {
+    if (!this.botView) return false
+    const cookies = await this.botView.webContents.session.cookies.get({ domain: '.douyin.com' })
+    // 只有 sessionid_ss 或 sessionid 存在才代表真正登录了账号
+    // passport_csrf_token 等是游客也会分配的，绝对不能用作登录态判定！
+    const sessionCookie = cookies.find((c) => c.name === 'sessionid' || c.name === 'sessionid_ss')
+    return !!sessionCookie
   }
 
   public async getFriendsList(): Promise<FriendItem[]> {
     if (!this.botView) throw new Error('Bot view not initialized')
+
+    // 如果未登录，尝试让用户去登录而不是直接抛出死锁异常
+    const isLoggedIn = await this.checkIsLoggedIn()
+    if (!isLoggedIn) {
+      throw new Error('未登录抖音，请先完成扫码登录。')
+    }
 
     // 【核心修复】由于获取列表需要模拟滚动触发前端的懒加载机制（IntersectionObserver），
     // 如果窗口处于 hidden 状态，懒加载将永远不会触发。
@@ -281,6 +332,12 @@ export class DouyinAutomation {
     onProgress?: (msg: string) => void
   ): Promise<void> {
     if (!this.botView) throw new Error('Bot view not initialized')
+
+    const isLoggedIn = await this.checkIsLoggedIn()
+    if (!isLoggedIn) {
+      throw new Error('未登录抖音，请先完成扫码登录。')
+    }
+
     if (isManual) {
       this.showPage()
     }
@@ -289,6 +346,8 @@ export class DouyinAutomation {
       console.log(msg)
       if (onProgress) onProgress(msg)
     }
+
+    this.isAborted = false
 
     log('正在连接到抖音页面...')
     const { browser, page } = await this.getPlaywrightPage()
@@ -306,6 +365,11 @@ export class DouyinAutomation {
       await page.waitForTimeout(2000)
 
       for (const friendName of selectedFriends) {
+        if (this.isAborted) {
+          log('【任务已终止】用户已强制停止了执行任务。')
+          break
+        }
+
         const targetFriendName = friendName.split('\n')[0].trim()
         log(`准备向好友 [${targetFriendName}] 发送消息...`)
 
@@ -379,6 +443,8 @@ export class DouyinAutomation {
           log(`尝试向下滚动查找好友: ${targetFriendName}...`)
           // 纯 JS 步进滚动，比鼠标滚轮更稳定，且能触发懒加载
           for (let i = 0; i < 30; i++) {
+            if (this.isAborted) break
+
             await page.evaluate((): void => {
               const firstItem = document.querySelector(
                 '[class*="conversationConversationItemwrapper"]'

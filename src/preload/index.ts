@@ -7,6 +7,7 @@ const api = {
   setStore: (data: unknown) => ipcRenderer.invoke('store:set', data),
   login: () => ipcRenderer.invoke('automation:login'),
   getFriends: () => ipcRenderer.invoke('automation:getFriends'),
+  checkLogin: () => ipcRenderer.invoke('automation:checkLogin'),
   executeStreak: (isManual: boolean = false) => ipcRenderer.invoke('automation:execute', isManual),
   openFile: () => ipcRenderer.invoke('dialog:openFile'),
   showDouyinWindow: () => ipcRenderer.invoke('automation:showWindow'),
@@ -15,6 +16,9 @@ const api = {
   onProgress: (callback: (msg: string) => void) => {
     ipcRenderer.removeAllListeners('automation:progress')
     ipcRenderer.on('automation:progress', (_event, msg) => callback(msg))
+  },
+  stopAutomation: () => {
+    ipcRenderer.invoke('automation:stop')
   },
   onRoute: (callback: (route: string) => void) => {
     ipcRenderer.removeAllListeners('automation:route')
