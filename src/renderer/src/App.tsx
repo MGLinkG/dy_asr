@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const SIDEBAR_WIDTH = 260
 
 type Route = 'dashboard' | 'schedule' | 'message' | 'douyin'
 
-const isRoute = (v: unknown): v is Route =>
-  v === 'dashboard' || v === 'schedule' || v === 'message' || v === 'douyin'
-
-const isMenuItem = (v: unknown): v is { id: Route; label: string } => {
-  if (!v || typeof v !== 'object') return false
-  const item = v as Record<string, unknown>
-  return isRoute(item.id) && typeof item.label === 'string'
-}
+const isRoute = (val: unknown): val is Route =>
+  typeof val === 'string' && ['dashboard', 'schedule', 'message', 'douyin'].includes(val)
 
 const DEFAULT_STORE: StoreData = {
   friends: [],
@@ -24,6 +19,8 @@ const DEFAULT_STORE: StoreData = {
 }
 
 export default function App() {
+  const { t, i18n } = useTranslation()
+
   const [store, setStore] = useState<StoreData>(DEFAULT_STORE)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -35,53 +32,68 @@ export default function App() {
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const defaultMenu: Array<{ id: Route; label: string }> = [
-    { id: 'dashboard', label: '好友列表管理' },
-    { id: 'schedule', label: '定时任务' },
-    { id: 'message', label: '消息设置' },
-    { id: 'douyin', label: '抖音页面' }
-  ]
+  const defaultMenuIds: Array<Route> = ['dashboard', 'schedule', 'message', 'douyin']
 
-  const [menuItems, setMenuItems] = useState<Array<{ id: Route; label: string }>>(() => {
-    const saved = localStorage.getItem('menuOrder')
+  const [menuOrder, setMenuOrder] = useState<Array<Route>>(() => {
+    const saved = localStorage.getItem('menuOrderIds')
     if (saved) {
       try {
         const parsed: unknown = JSON.parse(saved)
         if (
           Array.isArray(parsed) &&
-          parsed.length === defaultMenu.length &&
-          parsed.every(isMenuItem)
+          parsed.length === defaultMenuIds.length &&
+          parsed.every(isRoute)
         ) {
           return parsed
         }
       } catch {
-        localStorage.removeItem('menuOrder')
+        localStorage.removeItem('menuOrderIds')
       }
     }
-    return defaultMenu
+    return defaultMenuIds
+  })
+
+  // We can map route IDs to their current translated label dynamically
+  const menuItems = menuOrder.map((id) => {
+    let label = ''
+    switch (id) {
+      case 'dashboard':
+        label = t('app.menu_dashboard')
+        break
+      case 'schedule':
+        label = t('app.menu_schedule')
+        break
+      case 'message':
+        label = t('app.menu_message')
+        break
+      case 'douyin':
+        label = t('app.menu_douyin')
+        break
+    }
+    return { id, label }
   })
 
   const [draggedItem, setDraggedItem] = useState<string | null>(null)
 
   async function handleGetFriends(silent = false): Promise<void> {
     if (!silent) setLoading(true)
-    setStatus('正在同步好友列表...')
+    setStatus(t('app.syncing'))
     try {
       const friends = await window.api.getFriends()
       if (friends && friends.length > 0) {
         // 不再自动过滤和清除不在当前列表中的已选好友，除非用户主动退出账号
         const newStore = await window.api.setStore({ friends })
         setStore(newStore)
-        setStatus(`好友列表同步成功，共 ${friends.length} 个好友`)
+        setStatus(t('app.sync_success', { count: friends.length }))
       } else if (!silent) {
-        setStatus('未获取到好友数据，请检查是否已登录')
+        setStatus(t('app.sync_fail_nologin'))
       } else {
-        setStatus('暂无运行任务')
+        setStatus(t('app.status_empty'))
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
-      if (!silent) setStatus('获取失败: ' + message)
-      else setStatus('暂无运行任务')
+      if (!silent) setStatus(t('app.get_fail', { msg: message }))
+      else setStatus(t('app.status_empty'))
     }
     if (!silent) setLoading(false)
   }
@@ -107,7 +119,7 @@ export default function App() {
           if (loggedIn) {
             handleGetFriends(true)
           } else {
-            setStatus('未登录状态，跳过自动同步。请前往“抖音页面”登录。')
+            setStatus(t('app.not_logged_in_check'))
             // 如果未登录且好友列表为空，直接显示登录提示
             if (!data.friends || data.friends.length === 0) {
               setIsLoggingIn(true)
@@ -124,9 +136,12 @@ export default function App() {
 
     if (window.api.onRoute) {
       window.api.onRoute((r: string) => {
-        if (isRoute(r)) setRoute(r)
+        if (isRoute(r)) {
+          setRoute(r)
+        }
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -141,14 +156,14 @@ export default function App() {
 
   const handleLogout = async () => {
     setLoading(true)
-    setStatus('正在清除数据并退出...')
+    setStatus(t('app.logging_out'))
     try {
       const newStore = await window.api.logout()
       setStore(newStore)
-      setStatus('已成功退出当前账号，本地数据已清除。')
+      setStatus(t('app.status_empty'))
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
-      setStatus('退出失败: ' + message)
+      setStatus(t('app.logout_fail', { msg: message }))
     }
     setLoading(false)
     setShowLogoutConfirm(false)
@@ -156,15 +171,15 @@ export default function App() {
 
   const handleExecute = async () => {
     setLoading(true)
-    setStatus('正在准备执行续火花任务...')
+    setStatus(t('app.prepare_run'))
     setRoute('douyin') // 执行时自动切换到抖音页面
     try {
       const newStore = await window.api.executeStreak(true) // true 表示手动执行
       if (newStore) setStore(newStore)
-      setStatus('执行完成！')
+      setStatus(t('app.run_success'))
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
-      setStatus('执行失败: ' + message)
+      setStatus(t('app.run_fail', { msg: message }))
     }
     setLoading(false)
   }
@@ -228,18 +243,20 @@ export default function App() {
   const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault()
     if (!draggedItem || draggedItem === id) return
-    const draggedIndex = menuItems.findIndex((item) => item.id === draggedItem)
-    const targetIndex = menuItems.findIndex((item) => item.id === id)
 
-    const newItems = [...menuItems]
-    const [removed] = newItems.splice(draggedIndex, 1)
-    newItems.splice(targetIndex, 0, removed)
-    setMenuItems(newItems)
+    const oldIndex = menuOrder.indexOf(draggedItem as Route)
+    const newIndex = menuOrder.indexOf(id as Route)
+
+    const newOrder = [...menuOrder]
+    newOrder.splice(oldIndex, 1)
+    newOrder.splice(newIndex, 0, draggedItem as Route)
+
+    setMenuOrder(newOrder)
+    localStorage.setItem('menuOrderIds', JSON.stringify(newOrder))
   }
 
   const handleDragEnd = () => {
     setDraggedItem(null)
-    localStorage.setItem('menuOrder', JSON.stringify(menuItems))
   }
 
   const renderFriendCard = (friend: FriendItem, isSelected: boolean) => {
@@ -312,7 +329,7 @@ export default function App() {
         className="bg-gray-950/60 border-r border-gray-800 p-4 flex flex-col gap-2 relative shrink-0"
         style={{ width: SIDEBAR_WIDTH }}
       >
-        <div className="text-xl font-bold text-pink-500 px-2 py-2">抖音续火花</div>
+        <div className="text-xl font-bold text-pink-500 px-2 py-2">{t('app.title')}</div>
 
         {menuItems.map((item) => (
           <button
@@ -345,23 +362,21 @@ export default function App() {
 
         <div className="mt-8 px-2 flex flex-col gap-2">
           <div className="text-sm font-semibold text-gray-400 border-b border-gray-800 pb-1 mb-1">
-            当前任务状态
+            {t('app.status_title')}
           </div>
           <div
-            className={`text-sm ${status.includes('失败') ? 'text-red-400' : 'text-green-400'} min-h-[40px]`}
+            className={`text-sm ${status.includes('失败') || status.includes('fail') ? 'text-red-400' : 'text-green-400'} min-h-[40px]`}
           >
-            {status || '暂无运行任务'}
+            {status || t('app.status_empty')}
           </div>
         </div>
 
         <div className="flex-1" />
-        <div className="text-xs text-gray-500 px-2 leading-5 mb-2">
-          进入“抖音页面”后如出现验证码，可直接在该页面手动完成。
-        </div>
+        <div className="text-xs text-gray-500 px-2 leading-5 mb-2">{t('app.captcha_hint')}</div>
 
         {isLoggingIn ? (
           <div className="p-3 bg-pink-600/10 border border-pink-500/30 rounded flex flex-col gap-2 mt-2">
-            <span className="text-xs text-pink-400 text-center">请在右侧页面完成登录</span>
+            <span className="text-xs text-pink-400 text-center">{t('app.login_hint')}</span>
             <button
               onClick={async () => {
                 // 在用户点击完成登录时，再检测一次是否真的登上了
@@ -371,12 +386,12 @@ export default function App() {
                   setRoute('dashboard')
                   handleGetFriends(false)
                 } else {
-                  setStatus('尚未检测到登录状态，请确保已扫码成功。')
+                  setStatus(t('app.login_not_detected'))
                 }
               }}
               className="w-full px-3 py-2 bg-pink-600 hover:bg-pink-700 text-white text-sm rounded transition-colors"
             >
-              我已完成登录
+              {t('app.login_done')}
             </button>
             <button
               onClick={() => {
@@ -385,7 +400,7 @@ export default function App() {
               }}
               className="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded transition-colors mt-1"
             >
-              暂不登录，返回
+              {t('app.login_cancel')}
             </button>
           </div>
         ) : (
@@ -398,44 +413,59 @@ export default function App() {
               }}
               className="w-full text-center px-3 py-2 rounded bg-gray-800/80 text-gray-300 hover:bg-gray-700 transition-colors text-sm"
             >
-              登录账号 / 切换账号
+              {t('app.login_btn')}
             </button>
             <button
               onClick={() => setShowLogoutConfirm(true)}
               className="w-full text-center px-3 py-2 rounded text-red-400 hover:bg-red-500/20 transition-colors text-sm"
             >
-              退出当前用户
+              {t('app.logout_btn')}
             </button>
           </div>
         )}
+
+        <div className="mt-4 border-t border-gray-800 pt-4 flex flex-col gap-2">
+          <label className="text-xs text-gray-500 pl-1">{t('app.language')}</label>
+          <select
+            value={i18n.language}
+            onChange={(e) => {
+              const lng = e.target.value
+              i18n.changeLanguage(lng)
+              localStorage.setItem('appLanguage', lng)
+            }}
+            className="w-full bg-gray-800/80 text-gray-300 p-2 rounded border border-gray-700 text-sm outline-none focus:border-pink-500 transition"
+          >
+            <option value="zh-CN">{t('app.lang_zh_cn')}</option>
+            <option value="zh-TW">{t('app.lang_zh_tw')}</option>
+            <option value="en-US">{t('app.lang_en_us')}</option>
+          </select>
+        </div>
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto relative">
         {route === 'douyin' && (
           <div className="h-full w-full flex items-center justify-center text-gray-400">
-            抖音页面已加载在右侧区域（切换回“好友列表管理”可收回）。
+            {t('app.douyin_loaded')}
           </div>
         )}
 
         {route === 'schedule' && (
           <div className="flex flex-col gap-6">
             <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow shrink-0">
-              <h1 className="text-2xl font-bold text-pink-500">定时任务</h1>
+              <h1 className="text-2xl font-bold text-pink-500">{t('app.schedule_title')}</h1>
               <button
                 onClick={handleSaveSchedule}
                 className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md hover:shadow-lg font-medium"
               >
-                保存设置
+                {t('app.save_btn')}
               </button>
             </header>
             <div className="bg-gray-800 p-6 rounded-lg flex flex-col gap-6 max-w-2xl">
               {/* Enable/Disable Toggle */}
               <div className="flex items-center justify-between bg-gray-900/50 p-4 rounded-xl border border-gray-700">
                 <div>
-                  <div className="font-medium text-gray-200">启用自动续火花</div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    开启后，将在设定的时间自动后台执行任务
-                  </div>
+                  <div className="font-medium text-gray-200">{t('app.enable_schedule')}</div>
+                  <div className="text-sm text-gray-500 mt-1">{t('app.schedule_desc')}</div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -451,21 +481,21 @@ export default function App() {
               <div
                 className={`transition-opacity duration-300 ${!localScheduleEnabled ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
               >
-                <label className="block text-sm font-medium text-gray-300 mb-3">每天执行时间</label>
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  {t('app.daily_time')}
+                </label>
                 <div className="flex flex-col gap-6 bg-gray-900/50 p-6 rounded-xl border border-gray-700 shadow-inner">
                   <div className="text-center">
                     <div className="text-5xl font-mono text-pink-500 font-bold tracking-wider drop-shadow-md">
                       {String(scheduleHour).padStart(2, '0')}:
                       {String(scheduleMinute).padStart(2, '0')}
                     </div>
-                    <div className="text-gray-400 mt-3 text-sm">
-                      将在每天的这个时间自动为您续火花
-                    </div>
+                    <div className="text-gray-400 mt-3 text-sm">{t('app.daily_time_desc')}</div>
                   </div>
 
                   <div className="flex flex-col gap-5 px-4 mt-2">
                     <div className="flex items-center gap-4">
-                      <span className="text-gray-400 w-12 text-right text-sm">小时</span>
+                      <span className="text-gray-400 w-12 text-right text-sm">{t('app.hour')}</span>
                       <input
                         type="range"
                         min="0"
@@ -480,7 +510,9 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                      <span className="text-gray-400 w-12 text-right text-sm">分钟</span>
+                      <span className="text-gray-400 w-12 text-right text-sm">
+                        {t('app.minute')}
+                      </span>
                       <input
                         type="range"
                         min="0"
@@ -503,44 +535,46 @@ export default function App() {
         {route === 'message' && (
           <div className="flex flex-col gap-6">
             <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow shrink-0">
-              <h1 className="text-2xl font-bold text-pink-500">消息设置</h1>
+              <h1 className="text-2xl font-bold text-pink-500">{t('app.message_title')}</h1>
               <button
                 onClick={handleSaveMessage}
                 className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md hover:shadow-lg font-medium"
               >
-                保存设置
+                {t('app.save_btn')}
               </button>
             </header>
 
             <div className="bg-gray-800 p-6 rounded-lg flex flex-col gap-6 max-w-2xl">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">消息类型</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  {t('app.message_type')}
+                </label>
                 <select
                   value={store.messageType}
                   onChange={(e) => updateConfig('messageType', e.target.value)}
                   className="w-full bg-gray-700 p-3 rounded border border-gray-600 focus:border-pink-500 outline-none transition"
                 >
-                  <option value="text">发送文本消息</option>
-                  <option value="video">发送指定视频</option>
+                  <option value="text">{t('app.type_text')}</option>
+                  <option value="video">{t('app.type_video')}</option>
                 </select>
               </div>
 
               {store.messageType === 'text' ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    续火花文本内容
+                    {t('app.text_content')}
                   </label>
                   <textarea
                     value={localMessageText}
                     onChange={(e) => setLocalMessageText(e.target.value)}
                     className="w-full bg-gray-700 p-3 rounded border border-gray-600 focus:border-pink-500 outline-none h-32 transition resize-none"
-                    placeholder="请输入要发送的文本..."
+                    placeholder={t('app.text_placeholder')}
                   />
                 </div>
               ) : (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    续火花视频路径
+                    {t('app.video_path')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -548,13 +582,13 @@ export default function App() {
                       readOnly
                       value={store.videoPath}
                       className="w-full bg-gray-700 p-3 rounded border border-gray-600 outline-none text-sm text-gray-300"
-                      placeholder="未选择视频"
+                      placeholder={t('app.no_video')}
                     />
                     <button
                       onClick={handleSelectVideo}
                       className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded whitespace-nowrap transition"
                     >
-                      浏览文件
+                      {t('app.browse_btn')}
                     </button>
                   </div>
                 </div>
@@ -566,7 +600,7 @@ export default function App() {
         {route === 'dashboard' && (
           <div className="flex flex-col gap-6 h-full">
             <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow">
-              <h1 className="text-2xl font-bold text-pink-500">好友管理与执行</h1>
+              <h1 className="text-2xl font-bold text-pink-500">{t('app.dashboard_title')}</h1>
               <div className="flex gap-4">
                 <button
                   onClick={() => {
@@ -575,17 +609,17 @@ export default function App() {
                   disabled={loading}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded transition disabled:opacity-50"
                 >
-                  获取好友
+                  {t('app.get_friends')}
                 </button>
                 {loading ? (
                   <button
                     onClick={() => {
                       window.api.stopAutomation()
-                      setStatus('【停止中】正在等待当前步骤中止...')
+                      setStatus(t('app.stopping'))
                     }}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition shadow-[0_0_10px_rgba(220,38,38,0.5)] animate-pulse"
                   >
-                    强制停止
+                    {t('app.force_stop')}
                   </button>
                 ) : (
                   <button
@@ -593,7 +627,7 @@ export default function App() {
                     disabled={store.selectedFriends.length === 0}
                     className="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded transition disabled:opacity-50"
                   >
-                    手动执行
+                    {t('app.manual_run')}
                   </button>
                 )}
               </div>
@@ -601,15 +635,15 @@ export default function App() {
 
             <div className="flex-1 bg-gray-800 p-6 rounded-lg flex flex-col min-h-0">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">好友列表</h2>
+                <h2 className="text-xl font-semibold">{t('app.friends_list')}</h2>
                 <span className="text-sm text-gray-400">
-                  已选 {store.selectedFriends?.length || 0}
+                  {t('app.selected_count')} {store.selectedFriends?.length || 0}
                 </span>
               </div>
 
               {store.friends?.length === 0 ? (
                 <div className="flex-1 border border-gray-700 rounded bg-gray-900 flex flex-col gap-4 items-center justify-center text-gray-500">
-                  <p>暂无好友数据，可能是未登录或列表为空</p>
+                  <p>{t('app.no_friends')}</p>
                   <button
                     onClick={() => {
                       setIsLoggingIn(true)
@@ -618,7 +652,7 @@ export default function App() {
                     }}
                     className="px-6 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded transition-colors shadow-md text-sm font-medium"
                   >
-                    前往登录抖音
+                    {t('app.go_login')}
                   </button>
                 </div>
               ) : (
@@ -626,7 +660,7 @@ export default function App() {
                   {/* Left Column: Selected */}
                   <div className="flex-1 flex flex-col border border-gray-700 rounded-lg bg-gray-900 overflow-hidden">
                     <div className="bg-gray-800/80 p-3 border-b border-gray-700 text-sm font-medium text-pink-500 flex justify-between items-center shrink-0">
-                      <span>待执行任务好友</span>
+                      <span>{t('app.selected_friends')}</span>
                       <span className="bg-pink-500/20 px-2 py-0.5 rounded text-xs">
                         {store.selectedFriends?.length || 0}
                       </span>
@@ -634,7 +668,7 @@ export default function App() {
                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
                       {store.selectedFriends?.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-                          暂未选择好友
+                          {t('app.no_selected')}
                         </div>
                       ) : (
                         store.selectedFriends?.map((friendName: string) => {
@@ -642,7 +676,7 @@ export default function App() {
                             name: friendName,
                             id: friendName,
                             avatar: '',
-                            date: '未在列表中显示'
+                            date: ''
                           }
                           return renderFriendCard(friend, true)
                         })
@@ -653,7 +687,7 @@ export default function App() {
                   {/* Right Column: Unselected */}
                   <div className="flex-1 flex flex-col border border-gray-700 rounded-lg bg-gray-900 overflow-hidden">
                     <div className="bg-gray-800/80 p-3 border-b border-gray-700 text-sm font-medium text-gray-400 flex justify-between items-center shrink-0">
-                      <span>未选择好友</span>
+                      <span>{t('app.unselected_friends')}</span>
                       <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">
                         {
                           store.friends.filter((f) => !store.selectedFriends.includes(f.name))
@@ -665,7 +699,7 @@ export default function App() {
                       {store.friends.filter((f) => !store.selectedFriends.includes(f.name))
                         .length === 0 ? (
                         <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-                          全部已选
+                          {t('app.all_selected')}
                         </div>
                       ) : (
                         store.friends
@@ -687,7 +721,7 @@ export default function App() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          <span className="font-medium">设置保存成功</span>
+          <span className="font-medium">{t('app.save_success')}</span>
         </div>
       )}
 
@@ -695,30 +729,34 @@ export default function App() {
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-gray-800 border border-gray-700 p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 transform transition-all">
-            <h3 className="text-xl font-bold text-white mb-2">确认退出当前用户？</h3>
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-              退出操作将会：
+            <h3 className="text-xl font-bold text-white mb-2">
+              {t('app.logout_confirm_title', '确认退出当前用户？')}
+            </h3>
+            <div className="text-gray-400 text-sm mb-6 leading-relaxed">
+              {t('app.logout_confirm_desc', '退出操作将会：')}
               <ul className="list-disc ml-5 mt-2 space-y-1">
-                <li>清除当前抖音网页版的登录状态 (Cookie)</li>
-                <li>清空本地已保存的好友列表数据</li>
-                <li>取消所有已勾选的执行任务</li>
+                <li>{t('app.logout_confirm_li1', '清除当前抖音网页版的登录状态 (Cookie)')}</li>
+                <li>{t('app.logout_confirm_li2', '清空本地已保存的好友列表数据')}</li>
+                <li>{t('app.logout_confirm_li3', '取消所有已勾选的执行任务')}</li>
               </ul>
-              数据清除后无法恢复，您需要重新扫码登录。
-            </p>
+              {t('app.logout_confirm_warn', '数据清除后无法恢复，您需要重新扫码登录。')}
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowLogoutConfirm(false)}
                 disabled={loading}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition"
               >
-                取消
+                {t('app.login_cancel', '取消')}
               </button>
               <button
                 onClick={handleLogout}
                 disabled={loading}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition disabled:opacity-50"
               >
-                {loading ? '正在清除...' : '确认清除并退出'}
+                {loading
+                  ? t('app.logging_out', '正在清除...')
+                  : t('app.logout_confirm_btn', '确认清除并退出')}
               </button>
             </div>
           </div>
