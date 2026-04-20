@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 
 const SIDEBAR_WIDTH = 260
 
-type Route = 'dashboard' | 'schedule' | 'message' | 'douyin'
+type Route = 'dashboard' | 'schedule' | 'message' | 'settings' | 'douyin'
 
 const isRoute = (val: unknown): val is Route =>
-  typeof val === 'string' && ['dashboard', 'schedule', 'message', 'douyin'].includes(val)
+  typeof val === 'string' &&
+  ['dashboard', 'schedule', 'message', 'settings', 'douyin'].includes(val)
 
 const DEFAULT_STORE: StoreData = {
   friends: [],
@@ -32,7 +33,7 @@ export default function App() {
   const [showSaveToast, setShowSaveToast] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const defaultMenuIds: Array<Route> = ['dashboard', 'schedule', 'message', 'douyin']
+  const defaultMenuIds: Array<Route> = ['dashboard', 'schedule', 'message', 'settings', 'douyin']
 
   const [menuOrder, setMenuOrder] = useState<Array<Route>>(() => {
     const saved = localStorage.getItem('menuOrderIds')
@@ -65,6 +66,9 @@ export default function App() {
         break
       case 'message':
         label = t('app.menu_message')
+        break
+      case 'settings':
+        label = t('app.menu_settings')
         break
       case 'douyin':
         label = t('app.menu_douyin')
@@ -423,26 +427,49 @@ export default function App() {
             </button>
           </div>
         )}
-
-        <div className="mt-4 border-t border-gray-800 pt-4 flex flex-col gap-2">
-          <label className="text-xs text-gray-500 pl-1">{t('app.language')}</label>
-          <select
-            value={i18n.language}
-            onChange={(e) => {
-              const lng = e.target.value
-              i18n.changeLanguage(lng)
-              localStorage.setItem('appLanguage', lng)
-            }}
-            className="w-full bg-gray-800/80 text-gray-300 p-2 rounded border border-gray-700 text-sm outline-none focus:border-pink-500 transition"
-          >
-            <option value="zh-CN">{t('app.lang_zh_cn')}</option>
-            <option value="zh-TW">{t('app.lang_zh_tw')}</option>
-            <option value="en-US">{t('app.lang_en_us')}</option>
-          </select>
-        </div>
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto relative">
+        {route === 'settings' && (
+          <div className="flex flex-col gap-6">
+            <header className="flex justify-between items-center bg-gray-800 p-4 rounded-lg shadow shrink-0">
+              <h1 className="text-2xl font-bold text-pink-500">{t('app.settings_title')}</h1>
+            </header>
+
+            <div className="bg-gray-800 p-6 rounded-lg flex flex-col gap-6 max-w-2xl">
+              {/* Language Switcher */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  {t('app.language_setting')}
+                </label>
+                <select
+                  value={i18n.language}
+                  onChange={(e) => {
+                    const lng = e.target.value
+                    i18n.changeLanguage(lng)
+                    localStorage.setItem('appLanguage', lng)
+                  }}
+                  className="w-full bg-gray-700 p-3 rounded border border-gray-600 focus:border-pink-500 outline-none transition"
+                >
+                  <option value="zh-CN">{t('app.lang_zh_cn')}</option>
+                  <option value="zh-TW">{t('app.lang_zh_tw')}</option>
+                  <option value="en-US">{t('app.lang_en_us')}</option>
+                </select>
+              </div>
+
+              {/* Disclaimer */}
+              <div className="mt-4 pt-6 border-t border-gray-700">
+                <h2 className="text-lg font-semibold text-gray-200 mb-3">
+                  {t('app.disclaimer_title')}
+                </h2>
+                <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700 text-sm text-gray-400 leading-relaxed">
+                  {t('app.disclaimer_content')}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {route === 'douyin' && (
           <div className="h-full w-full flex items-center justify-center text-gray-400">
             {t('app.douyin_loaded')}

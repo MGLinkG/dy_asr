@@ -69,6 +69,11 @@
     "language": "語言",
     "lang_zh_cn": "简体中文",
     "lang_zh_tw": "繁體中文",
-    "lang_en_us": "English"
+    "lang_en_us": "English",
+    "menu_settings": "系統設置",
+    "settings_title": "系統設置",
+    "language_setting": "顯示語言",
+    "disclaimer_title": "免責聲明",
+    "disclaimer_content": "本軟件為開源項目，僅供編程學習與技術交流使用。請勿用於任何商業用途或違反抖音平台服務協議的操作（如惡意營銷、黑產等）。使用者因使用本軟件產生的任何帳號封禁風險、糾紛及直接/間接損失，均由使用者自行承擔，軟件原作者概不負責。"
   }
 }

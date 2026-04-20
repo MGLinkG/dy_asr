@@ -69,6 +69,11 @@
     "language": "Language",
     "lang_zh_cn": "简体中文",
     "lang_zh_tw": "繁體中文",
-    "lang_en_us": "English"
+    "lang_en_us": "English",
+    "menu_settings": "Settings",
+    "settings_title": "System Settings",
+    "language_setting": "Display Language",
+    "disclaimer_title": "Disclaimer",
+    "disclaimer_content": "This software is an open-source project intended strictly for programming education and technical exchange. Do not use it for commercial purposes or any operations that violate Douyin's terms of service (such as malicious marketing or black-hat activities). The user bears all risks of account bans, disputes, and direct/indirect losses arising from the use of this software. The original author assumes no liability."
   }
 }
